@@ -411,6 +411,20 @@ ModulePanel::ModulePanel (RackProcessor& p, int s) : proc (p), slot (s)
 
 ModulePanel::~ModulePanel() { stopTimer(); }
 
+void ModulePanel::mouseDown (const MouseEvent&)
+{
+    if (onSelect) onSelect (slot);
+}
+
+void ModulePanel::setSelected (bool shouldBeSelected)
+{
+    if (selected != shouldBeSelected)
+    {
+        selected = shouldBeSelected;
+        repaint();
+    }
+}
+
 int ModulePanel::currentModel() const
 {
     if (type <= 0 || info (type).params.empty() || info (type).params[0].kind != Kind::Choice) return 0;
@@ -574,6 +588,11 @@ void ModulePanel::paint (Graphics& g)
     }
     g.setColour (Colours::white.withAlpha (0.12f)); g.drawVerticalLine ((int) b.getX() + 1, 0.f, (float) H);
     g.setColour (Colours::black.withAlpha (0.6f));  g.drawRect (b, 1.5f);
+    if (selected)
+    {
+        g.setColour (Colour (0xffffb23e));
+        g.drawRoundedRectangle (b.reduced (1.5f), 4.f, 3.f);
+    }
 
     // vis
     for (float sx : { 14.f, (float) W - 14.f })
