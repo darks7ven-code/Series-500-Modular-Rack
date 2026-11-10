@@ -999,5 +999,5 @@ void RackEditor::Preview::paint (Graphics& g)
     g.setColour (Colours::white); g.setFont (Font (FontOptions (20.f, Font::bold)));
     g.drawText (inf.name, 16, 32, 240, 28, Justification::centredLeft);
     g.setColour (Colour (0xffc5c9ce)); g.setFont (Font (FontOptions (12.f)));
-    g.drawText (inf.tag + "   •   SLOT " + String (owner.selectedSlot + 1), 260, 36, getWidth() - 276, 22, Justification::centredLeft);
+    g.drawText (String (inf.tag) + "   •   SLOT " + String (owner.selectedSlot + 1), 260, 36, getWidth() - 276, 22, Justification::centredLeft);
 }
