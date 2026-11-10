@@ -776,11 +776,17 @@ void AddTile::mouseUp (const MouseEvent& e)
 RackEditor::RackEditor (RackProcessor& p) : AudioProcessorEditor (p), proc (p)
 {
     setLookAndFeel (&lnf);
-    addAndMakeVisible (content);
+    setSize (900, 900);
+    viewport.setViewedComponent (&content, false);
+    viewport.setScrollBarsShown (true, false);
+    viewport.setScrollBarThickness (12);
+    addAndMakeVisible (viewport);
+    addAndMakeVisible (preview);
 
     for (int s = 0; s < kNumSlots; ++s)
     {
         panels[(size_t) s] = std::make_unique<ModulePanel> (proc, s);
+        panels[(size_t) s]->onSelect = [this] (int slot) { selectModule (slot); };
         panels[(size_t) s]->onMove = [this] (int slot, int dir)
         {
             proc.moveModule (slot, dir);
@@ -791,6 +797,8 @@ RackEditor::RackEditor (RackProcessor& p) : AudioProcessorEditor (p), proc (p)
         {
             proc.removeModule (slot);
             for (auto& pn : panels) pn->refresh();
+            if (selectedSlot == slot) selectedSlot = -1;
+            else if (selectedSlot > slot) --selectedSlot;
             layoutForCount();
         };
         content.addChildComponent (*panels[(size_t) s]);
@@ -800,7 +808,9 @@ RackEditor::RackEditor (RackProcessor& p) : AudioProcessorEditor (p), proc (p)
         if (proc.addModule (type))
         {
             for (auto& pn : panels) pn->refresh();
+            selectedSlot = proc.getNumModules() - 1;
             layoutForCount();
+            selectModule (selectedSlot);
         }
     };
     content.addChildComponent (addTile);
@@ -854,39 +864,45 @@ RackEditor::~RackEditor() { stopTimer(); setLookAndFeel (nullptr); }
 
 void RackEditor::layoutForCount()
 {
-    const float keepScale = scale;      // setResizeLimits peut redimensionner la fenêtre : on garde l'échelle voulue
     const int n = proc.getNumModules();
+    const int availableWidth = viewport.getWidth() > 0 ? viewport.getWidth() : getWidth() - 16;
+    contentW = jmax (680, availableWidth - 12);
     const bool full = n >= kNumSlots;
+    const int rowStep = ModulePanel::kHeight + kGap;
     for (int s = 0; s < kNumSlots; ++s)
     {
         panels[(size_t) s]->setVisible (s < n);
-        panels[(size_t) s]->setBounds (kRail + s * ModulePanel::kWidth, kTop, ModulePanel::kWidth, ModulePanel::kHeight);
+        panels[(size_t) s]->setBounds (kRail, kTop + s * rowStep, contentW - 2 * kRail, ModulePanel::kHeight);
+        panels[(size_t) s]->setSelected (s == selectedSlot);
     }
     addTile.setVisible (! full);
-    addTile.setBounds (kRail + n * ModulePanel::kWidth, kTop, ModulePanel::kWidth, ModulePanel::kHeight);
-
-    contentW = jmax (980, 2 * kRail + ModulePanel::kWidth * (n + (full ? 0 : 1)));
-    content.setBounds (0, 0, contentW, kH);
-
+    addTile.setBounds (kRail, kTop + n * rowStep, contentW - 2 * kRail, ModulePanel::kHeight);
+    contentH = kTop + n * rowStep + (full ? 18 : rowStep) + 12;
+    content.setBounds (0, 0, contentW, contentH);
     presetBox.setBounds (190, 14, 130, 26);
     inLabel.setBounds (340, 8, 44, 38);   inKnob.setBounds (384, 8, 104, 38);
     outLabel.setBounds (500, 8, 52, 38);  outKnob.setBounds (552, 8, 104, 38);
     bypassBtn.setBounds (contentW - 150, 12, 120, 30);
-
-    getConstrainer()->setFixedAspectRatio ((double) contentW / (double) kH);
-    setResizeLimits ((int) (contentW * 0.5), (int) (kH * 0.5), (int) (contentW * 1.4), (int) (kH * 1.4));
-    scale = keepScale;
-    setSize (roundToInt ((float) contentW * keepScale), roundToInt ((float) kH * keepScale));
+    setResizeLimits (680, 720, 1500, 1500);
     shownCount = n;
     content.repaint();
+    preview.repaint();
+}
+
+void RackEditor::selectModule (int slot)
+{
+    selectedSlot = (slot >= 0 && slot < proc.getNumModules()) ? slot : -1;
+    for (int s = 0; s < kNumSlots; ++s)
+        panels[(size_t) s]->setSelected (s == selectedSlot);
+    preview.repaint();
 }
 
 void RackEditor::resized()
 {
-    if (getWidth() <= 0 || contentW <= 0) return;
-    scale = (float) getWidth() / (float) contentW;
-    content.setTransform (AffineTransform::scale (scale));
-    content.setBounds (0, 0, contentW, kH);
+    const int previewY = jmax (8, getHeight() - kPreviewHeight - 16);
+    viewport.setBounds (8, 8, getWidth() - 16, previewY - 16);
+    preview.setBounds (8, previewY, getWidth() - 16, kPreviewHeight);
+    layoutForCount();
 }
 
 void RackEditor::paint (Graphics& g) { g.fillAll (Colour (0xff101113)); }
@@ -901,8 +917,6 @@ void RackEditor::timerCallback()
 void RackEditor::paintContent (Graphics& g)
 {
     g.fillAll (Colour (0xff0d0e10));
-
-    // barre du haut
     g.setGradientFill (ColourGradient (Colour (0xff2a2d31), 0, 0, Colour (0xff17191c), 0, (float) kTop, false));
     g.fillRect (0, 0, contentW, kTop);
     g.setColour (Colours::black); g.drawHorizontalLine (kTop - 1, 0.f, (float) contentW);
@@ -911,8 +925,7 @@ void RackEditor::paintContent (Graphics& g)
     g.drawText ("RACK STRIP", 16, 6, 170, 28, Justification::centredLeft);
     g.setColour (Colour (0xffffb23e));
     g.setFont (Font (FontOptions (9.f, Font::bold)));
-    g.drawText ("MODULAR CHANNEL CHAIN", 16, 32, 170, 14, Justification::centredLeft);
-
+    g.drawText ("VERTICAL MODULAR CHANNEL CHAIN", 16, 32, 250, 14, Justification::centredLeft);
     auto meter = [&g] (float v, int x, int y)
     {
         const float db = Decibels::gainToDecibels (v, -60.f);
@@ -922,30 +935,46 @@ void RackEditor::paintContent (Graphics& g)
         g.fillRect (x, y, (int) (100 * frac), 7);
     };
     const int mx = contentW - 290;
-    meter (dispIn, mx, 15);
-    meter (dispOut, mx, 31);
+    meter (dispIn, mx, 15); meter (dispOut, mx, 31);
     g.setColour (Colours::white.withAlpha (0.6f));
     g.setFont (Font (FontOptions (9.f, Font::bold)));
     g.drawText ("IN", mx - 30, 12, 26, 10, Justification::centredRight);
     g.drawText ("OUT", mx - 34, 28, 30, 10, Justification::centredRight);
-
-    // rails du rack, sur toute la hauteur et toute la largeur
     for (int side = 0; side < 2; ++side)
     {
         const int x = side == 0 ? 0 : contentW - kRail;
         g.setGradientFill (ColourGradient (Colour (0xff3d4044), (float) x, 0, Colour (0xff222427), (float) (x + kRail), 0, false));
-        g.fillRect (x, kTop, kRail, kH - kTop);
+        g.fillRect (x, kTop, kRail, contentH - kTop);
         g.setColour (Colour (0xff060607));
-        for (int y = kTop + 22; y < kH - 14; y += 60)
+        for (int y = kTop + 22; y < contentH - 14; y += 60)
             g.fillRoundedRectangle ((float) x + 9.f, (float) y, 12.f, 20.f, 4.f);
     }
-
     if (proc.getNumModules() == 0)
     {
         g.setColour (Colours::white.withAlpha (0.28f));
         g.setFont (Font (FontOptions (18.f)));
-        g.drawText ("Your rack is empty. Click  +  to build your chain, or pick a ready-made chain above.",
-                    kRail + ModulePanel::kWidth + 10, kTop + 250, contentW - 2 * kRail - ModulePanel::kWidth - 20, 60,
-                    Justification::centredLeft);
+        g.drawText ("Your rack is empty. Use ADD MODULE below to build your chain.",
+                    kRail + 18, kTop + 90, contentW - 2 * kRail - 36, 60, Justification::centred);
     }
+}
+
+void RackEditor::Preview::paint (Graphics& g)
+{
+    auto area = getLocalBounds().toFloat().reduced (1.f);
+    g.setColour (Colour (0xff202328)); g.fillRoundedRectangle (area, 7.f);
+    g.setColour (Colour (0xff444950)); g.drawRoundedRectangle (area, 7.f, 1.f);
+    g.setColour (Colour (0xffffb23e)); g.setFont (Font (FontOptions (10.f, Font::bold)));
+    g.drawText ("MODULE PREVIEW", 16, 12, 180, 16, Justification::centredLeft);
+    if (owner.selectedSlot < 0 || owner.selectedSlot >= owner.proc.getNumModules())
+    {
+        g.setColour (Colours::white.withAlpha (0.55f)); g.setFont (Font (FontOptions (14.f)));
+        g.drawText ("Select a module in the rack to keep its preview here.", 16, 36, getWidth() - 32, 44, Justification::centredLeft);
+        return;
+    }
+    const int type = owner.proc.getSlotType (owner.selectedSlot);
+    const auto& inf = info (type);
+    g.setColour (Colours::white); g.setFont (Font (FontOptions (20.f, Font::bold)));
+    g.drawText (inf.name, 16, 32, 240, 28, Justification::centredLeft);
+    g.setColour (Colour (0xffc5c9ce)); g.setFont (Font (FontOptions (12.f)));
+    g.drawText (inf.tag + "   •   SLOT " + String (owner.selectedSlot + 1), 260, 36, getWidth() - 276, 22, Justification::centredLeft);
 }
