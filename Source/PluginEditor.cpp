@@ -403,6 +403,8 @@ ModulePanel::ModulePanel (RackProcessor& p, int s) : proc (p), slot (s)
         };
     }
 
+    addMouseListener (this, true); // Les clics sur les contrôles sélectionnent aussi le module.
+
     typeAtt = std::make_unique<ParameterAttachment> (*proc.apvts.getParameter (RackProcessor::typeId (slot)),
                                                      [this] (float) { refresh(); });
     refresh();
@@ -860,6 +862,8 @@ RackEditor::RackEditor (RackProcessor& p) : AudioProcessorEditor (p), proc (p)
         if (id > 0)
         {
             proc.loadPreset (id - 1);
+            selectedSlot = -1;
+            preview.repaint();
             presetBox.setSelectedId (0, dontSendNotification);
             for (auto& pn : panels) pn->refresh();
             layoutForCount();
