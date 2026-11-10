@@ -59,6 +59,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void refresh();
+    void mouseDown (const juce::MouseEvent&) override;
+    void setSelected (bool shouldBeSelected);
+    std::function<void (int slot)> onSelect;
     std::function<void (int slot, int dir)> onMove;
     std::function<void (int slot)> onRemove;
 
@@ -86,7 +89,7 @@ private:
     const int slot;
     int type = -1, model = 0;
     Skin skin;
-    bool updating = false;
+    bool updating = false, selected = false;
     float vuPos = 0.f, ledPos = 0.f;
 
     juce::ToggleButton powerBtn;
@@ -132,12 +135,23 @@ private:
     void paintContent (juce::Graphics&);
     void timerCallback() override;
     void layoutForCount();
+    void selectModule (int slot);
 
-    static constexpr int kRail = 30, kTop = 54, kH = kTop + ModulePanel::kHeight + 10;
+    class Preview : public juce::Component
+    {
+    public:
+        explicit Preview (RackEditor& o) : owner (o) {}
+        void paint (juce::Graphics&) override;
+        RackEditor& owner;
+    };
+
+    static constexpr int kRail = 30, kTop = 54, kPreviewHeight = 112, kGap = 12;
 
     RackProcessor& proc;
     RackLnF lnf;
     Content content { *this };
+    juce::Viewport viewport;
+    Preview preview { *this };
     std::array<std::unique_ptr<ModulePanel>, rack::kNumSlots> panels;
     AddTile addTile;
 
@@ -148,8 +162,8 @@ private:
     std::unique_ptr<juce::SliderParameterAttachment> inAtt, outAtt;
     std::unique_ptr<juce::ButtonParameterAttachment> bypassAtt;
     std::unique_ptr<juce::ParameterAttachment> countAtt;
-    float dispIn = 0.f, dispOut = 0.f, scale = 0.85f;
-    int contentW = 900, shownCount = -1;
+    float dispIn = 0.f, dispOut = 0.f;
+    int contentW = 900, contentH = 700, shownCount = -1, selectedSlot = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RackEditor)
 };
