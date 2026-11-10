@@ -7,18 +7,64 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
       - name: Build
         run: cmake --build build --config Release -j4
-      - name: Package
+
+      - name: Package and verify signatures
         run: |
+          set -euo pipefail
           mkdir out
           cp -R "build/RackStrip_artefacts/Release/VST3/Rack Strip.vst3" out/
           cp -R "build/RackStrip_artefacts/Release/AU/Rack Strip.component" out/
-          codesign --force --deep -s - "out/Rack Strip.vst3"
-          codesign --force --deep -s - "out/Rack Strip.component"
-          ditto -c -k --keepParent out RackStrip-macOS.zip
+
+          # Sign only after JUCE has finished generating all bundle resources.
+          codesign --force --deep --sign - "out/Rack Strip.vst3"
+          codesign --force --deep --sign - "out/Rack Strip.component"
+
+          # Verify the final packaged bundles, not the intermediate build products.
+          codesign --verify --deep --strict --verbose=2 "out/Rack Strip.vst3"
+          codesign --verify --deep --strict --verbose=2 "out/Rack Strip.component"
+          plutil -lint "out/Rack Strip.vst3/Contents/Info.plist"
+          plutil -lint "out/Rack Strip.component/Contents/Info.plist"
+
+          VST3_BIN="out/Rack Strip.vst3/Contents/MacOS/Rack Strip"
+          AU_BIN="out/Rack Strip.component/Contents/MacOS/Rack Strip"
+          echo "VST3 architectures:"
+          lipo -archs "$VST3_BIN"
+          echo "AU architectures:"
+          lipo -archs "$AU_BIN"
+          for BIN in "$VST3_BIN" "$AU_BIN"; do
+            ARCHS="$(lipo -archs "$BIN")"
+            [[ "$ARCHS" == *arm64* ]]
+            [[ "$ARCHS" == *x86_64* ]]
+          done
+
+      - name: Validate VST3 and AU with pluginval
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip \
+            --output /tmp/pluginval_macOS.zip
+          mkdir -p /tmp/pluginval
+          ditto -x -k /tmp/pluginval_macOS.zip /tmp/pluginval
+          PLUGINVAL="$(find /tmp/pluginval -path '*/Contents/MacOS/pluginval' -type f -print -quit)"
+          test -n "$PLUGINVAL"
+          chmod +x "$PLUGINVAL"
+
+          "$PLUGINVAL" --strictness-level 5 "out/Rack Strip.vst3"
+
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Rack Strip.component"
+          ditto "out/Rack Strip.component" "$HOME/Library/Audio/Plug-Ins/Components/Rack Strip.component"
+          "$PLUGINVAL" --strictness-level 5 "$HOME/Library/Audio/Plug-Ins/Components/Rack Strip.component"
+
+      - name: Create archive
+        run: ditto -c -k --keepParent out RackStrip-macOS.zip
+
       - uses: actions/upload-artifact@v4
         with:
           name: RackStrip-macOS
