@@ -6,7 +6,7 @@
 
 namespace rack
 {
-constexpr int kNumSlots = 8;
+constexpr int kNumSlots = 16;
 constexpr int kMaxParams = 12;
 
 enum class Kind { Lin, Log, Choice };
